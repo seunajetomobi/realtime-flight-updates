@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Test</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script>
+    const { useState } = React;
+    
+    function App() {
+      const [count, setCount] = useState(0);
+      return React.createElement('div', { style: { backgroundColor: 'black', color: 'white', height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column' } },
+        React.createElement('h1', { style: { color: 'lightblue' } }, 'Swairtrafiko - Test'),
+        React.createElement('p', null, 'Count: ' + count),
+        React.createElement('button', { 
+          onClick: () => setCount(count + 1),
+          style: { backgroundColor: 'blue', color: 'white', padding: '8px 16px', borderRadius: '4px' }
+        }, 'Click me')
+      );
+    }
+    
+    ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+  </script>
+</body>
+</html>

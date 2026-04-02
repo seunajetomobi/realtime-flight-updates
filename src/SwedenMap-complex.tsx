@@ -1,0 +1,314 @@
+import { Icon } from "leaflet";
+import "leaflet/dist/leaflet.css";
+import { useEffect, useState } from "react";
+import { Marker, Popup, useMap } from "react-leaflet";
+
+type Airport = { code: string; name: string; lat: number; lon: number };
+type Flight = {
+  id: string;
+  callsign: string;
+  origin: string;
+  dest: string;
+  lat: number;
+  lon: number;
+  altitude: number;
+  speed: number;
+  heading: number;
+  airline: string;
+  on_ground: boolean;
+};
+
+interface SwedenMapProps {
+  airports: Airport[];
+  selectedAirport: string;
+  onAirportSelect: (code: string) => void;
+  darkMode: boolean;
+}
+
+// Enhanced airport icons with better design
+const createAirportIcon = (isSelected: boolean, isHovered: boolean = false) => {
+  const size = isSelected ? 32 : 24;
+  const color = isSelected ? "#dc2626" : isHovered ? "#f59e0b" : "#2563eb";
+  const opacity = isHovered ? "0.4" : isSelected ? "0.3" : "0.2";
+
+  return new Icon({
+    iconUrl: `data:image/svg+xml;base64,${btoa(`
+      <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- Airport runway symbol -->
+        <rect x="${size * 0.2}" y="${size * 0.45}" width="${size * 0.6}" height="${size * 0.1}" fill="${color}" rx="${size * 0.02}"/>
+        <!-- Airport building -->
+        <rect x="${size * 0.35}" y="${size * 0.3}" width="${size * 0.3}" height="${size * 0.25}" fill="${color}" rx="${size * 0.03}"/>
+        <!-- Control tower -->
+        <rect x="${size * 0.42}" y="${size * 0.2}" width="${size * 0.16}" height="${size * 0.15}" fill="${color}"/>
+        <!-- Outer glow circle -->
+        <circle cx="${size / 2}" cy="${size / 2}" r="${size * 0.45}" fill="${color}" fill-opacity="${opacity}" stroke="${color}" stroke-width="1"/>
+        <!-- Inner accent -->
+        <circle cx="${size / 2}" cy="${size * 0.35}" r="${size * 0.08}" fill="white" fill-opacity="0.8"/>
+      </svg>
+    `)}`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size * 0.9],
+    popupAnchor: [0, -size * 0.9],
+    className: "airport-marker",
+  });
+};
+
+// Flight icon for aircraft on the map
+const createFlightIcon = (
+  isSelected: boolean,
+  isHovered: boolean = false,
+  heading: number = 0,
+) => {
+  const size = isSelected ? 28 : 20;
+  const color = isSelected ? "#dc2626" : isHovered ? "#f59e0b" : "#10b981";
+  const opacity = isHovered ? "0.6" : isSelected ? "0.4" : "0.3";
+
+  const svgString = `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <g transform="rotate(${heading} ${size / 2} ${size / 2})">
+      <!-- Aircraft body -->
+      <path d="M${size * 0.5} ${size * 0.2} L${size * 0.7} ${size * 0.8} L${size * 0.5} ${size * 0.7} L${size * 0.3} ${size * 0.8} Z" fill="${color}" fill-opacity="${opacity}"/>
+      <!-- Wings -->
+      <rect x="${size * 0.2}" y="${size * 0.5}" width="${size * 0.6}" height="${size * 0.1}" fill="${color}" fill-opacity="${opacity}"/>
+      <!-- Tail -->
+      <rect x="${size * 0.45}" y="${size * 0.15}" width="${size * 0.1}" height="${size * 0.2}" fill="${color}" fill-opacity="${opacity}"/>
+      <!-- Outer glow -->
+      <circle cx="${size / 2}" cy="${size / 2}" r="${size * 0.4}" fill="${color}" fill-opacity="0.1" stroke="${color}" stroke-width="1"/>
+    </g>
+  </svg>`;
+
+  return new Icon({
+    iconUrl: `data:image/svg+xml;base64,${btoa(svgString)}`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -size / 2],
+    className: "flight-marker",
+  });
+};
+
+// Map controller component for responsive behavior
+function MapController({ darkMode }: { darkMode: boolean }) {
+  const map = useMap();
+
+  useEffect(() => {
+    // Force map to resize on container changes
+    const resizeObserver = new ResizeObserver(() => {
+      setTimeout(() => {
+        map.invalidateSize();
+      }, 100);
+    });
+
+    const container = map.getContainer();
+    resizeObserver.observe(container);
+
+    // Initial size invalidation
+    setTimeout(() => {
+      map.invalidateSize();
+    }, 100);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [map]);
+
+  // Update tile layer when dark mode changes
+  useEffect(() => {
+    const tileLayer = map.getPane("tilePane")?.firstChild as any;
+    if (tileLayer && tileLayer._url) {
+      const newUrl = darkMode
+        ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+        : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
+      if (tileLayer._url !== newUrl) {
+        tileLayer.setUrl(newUrl);
+      }
+    }
+  }, [darkMode, map]);
+
+  return null;
+}
+
+// Airport marker component with enhanced interactivity
+function AirportMarker({
+  airport,
+  isSelected,
+  onSelect,
+  darkMode,
+}: {
+  airport: Airport;
+  isSelected: boolean;
+  onSelect: (code: string) => void;
+  darkMode: boolean;
+}) {
+  const [isHovered, setIsHovered] = useState(false);
+
+  const icon = createAirportIcon(isSelected, isHovered);
+
+  return (
+    <Marker
+      position={[airport.lat, airport.lon]}
+      icon={icon}
+      eventHandlers={{
+        click: () => onSelect(airport.code),
+        mouseover: () => setIsHovered(true),
+        mouseout: () => setIsHovered(false),
+      }}
+    >
+      <Popup
+        closeButton={false}
+        className={`airport-popup ${darkMode ? "dark-popup" : "light-popup"}`}
+        maxWidth={280}
+      >
+        <div
+          className={`p-3 rounded-lg ${darkMode ? "bg-gray-800 text-white" : "bg-white text-gray-900"} shadow-lg`}
+        >
+          <div className="flex items-center gap-2 mb-2">
+            <div
+              className={`w-3 h-3 rounded-full ${isSelected ? "bg-red-500" : "bg-blue-500"}`}
+            ></div>
+            <div className="font-bold text-lg">{airport.code}</div>
+          </div>
+          <div
+            className={`text-sm ${darkMode ? "text-gray-300" : "text-gray-600"} mb-3`}
+          >
+            {airport.name}
+          </div>
+          <div className="flex gap-2">
+            <button
+              className={`flex-1 px-3 py-2 rounded text-sm font-medium transition-colors ${
+                isSelected
+                  ? "bg-red-500 hover:bg-red-600 text-white"
+                  : "bg-blue-500 hover:bg-blue-600 text-white"
+              }`}
+              onClick={() => onSelect(airport.code)}
+            >
+              {isSelected ? "Selected" : "Select Airport"}
+            </button>
+            <button
+              className={`px-3 py-2 rounded text-sm font-medium transition-colors ${
+                darkMode
+                  ? "bg-gray-700 hover:bg-gray-600 text-gray-200"
+                  : "bg-gray-200 hover:bg-gray-300 text-gray-700"
+              }`}
+              onClick={() => onSelect(airport.code)}
+            >
+              ✈️
+            </button>
+          </div>
+        </div>
+      </Popup>
+    </Marker>
+  );
+}
+
+// Flight marker component
+function FlightMarker({
+  flight,
+  isSelected,
+  onSelect,
+  darkMode,
+}: {
+  flight: Flight;
+  isSelected: boolean;
+  onSelect: (flight: Flight | null) => void;
+  darkMode: boolean;
+}) {
+  // Validate flight data
+  if (
+    !flight ||
+    typeof flight.lat !== "number" ||
+    typeof flight.lon !== "number" ||
+    isNaN(flight.lat) ||
+    isNaN(flight.lon)
+  ) {
+    return null;
+  }
+
+  const [isHovered, setIsHovered] = useState(false);
+
+  const icon = createFlightIcon(isSelected, isHovered, flight.heading || 0);
+
+  return (
+    <Marker
+      position={[flight.lat, flight.lon]}
+      icon={icon}
+      eventHandlers={{
+        click: () => onSelect(flight),
+        mouseover: () => setIsHovered(true),
+        mouseout: () => setIsHovered(false),
+      }}
+    >
+      <Popup
+        closeButton={false}
+        className={`flight-popup ${darkMode ? "dark-popup" : "light-popup"}`}
+        maxWidth={300}
+      >
+        <div
+          className={`p-3 rounded-lg ${darkMode ? "bg-gray-800 text-white" : "bg-white text-gray-900"} shadow-lg`}
+        >
+          <div className="flex items-center gap-2 mb-2">
+            <div
+              className={`w-3 h-3 rounded-full ${isSelected ? "bg-red-500" : "bg-green-500"}`}
+            ></div>
+            <div className="font-bold text-lg">{flight.callsign}</div>
+          </div>
+          <div
+            className={`text-sm ${darkMode ? "text-gray-300" : "text-gray-600"} mb-3`}
+          >
+            <div>
+              <strong>Airline:</strong> {flight.airline}
+            </div>
+            <div>
+              <strong>Altitude:</strong> {Math.round(flight.altitude || 0)} ft
+            </div>
+            <div>
+              <strong>Speed:</strong> {Math.round((flight.speed || 0) * 3.6)}{" "}
+              km/h
+            </div>
+            <div>
+              <strong>Heading:</strong> {Math.round(flight.heading || 0)}°
+            </div>
+            <div>
+              <strong>Status:</strong>{" "}
+              {flight.on_ground ? "On Ground" : "In Flight"}
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              className={`flex-1 px-3 py-2 rounded text-sm font-medium transition-colors ${
+                isSelected
+                  ? "bg-red-500 hover:bg-red-600 text-white"
+                  : "bg-green-500 hover:bg-green-600 text-white"
+              }`}
+              onClick={() => onSelect(flight)}
+            >
+              {isSelected ? "Selected" : "View Details"}
+            </button>
+          </div>
+        </div>
+      </Popup>
+    </Marker>
+  );
+}
+
+export default function SwedenMap({
+  airports,
+  selectedAirport,
+  onAirportSelect,
+  darkMode,
+}: SwedenMapProps) {
+  return (
+    <div
+      className="relative w-full rounded-lg overflow-hidden shadow-lg bg-gray-100 dark:bg-gray-800"
+      style={{ height: "400px" }}
+    >
+      <div className="flex items-center justify-center h-full">
+        <div
+          className={`text-center ${darkMode ? "text-white" : "text-gray-900"}`}
+        >
+          <div className="text-4xl mb-4">🗺️</div>
+          <div className="text-lg font-semibold mb-2">Sweden Map</div>
+          <div className="text-sm">{airports.length} airports loaded</div>
+        </div>
+      </div>
+    </div>
+  );
+}
