@@ -56,7 +56,54 @@ const AirportDetail: React.FC<AirportDetailProps> = ({ airport, onBack }) => {
   const [showFlightDetail, setShowFlightDetail] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
 
+  // Mock flight data for when WebSocket isn't available
+  const getMockFlights = (): BroadcastFlight[] => {
+    const now = new Date();
+    const mockFlights: BroadcastFlight[] = [];
+    for (let i = 0; i < 18; i++) {
+      const depTime = new Date(now.getTime() + (i + 1) * 45 * 60 * 1000);
+      const arrTime = new Date(depTime.getTime() + 2 * 60 * 60 * 1000);
+      mockFlights.push({
+        id: `mock-${i}`,
+        callsign: `SK${800 + i}`,
+        flight: `SAS${i + 100}`,
+        airline: i % 2 === 0 ? "SAS" : "Ryanair",
+        origin: airport.code,
+        dest: i % 2 === 0 ? "ARN" : "GOT",
+        lat: 0,
+        lon: 0,
+        departure_time: depTime.toISOString(),
+        arrival_time: arrTime.toISOString(),
+      });
+    }
+    return mockFlights;
+  };
+
   useEffect(() => {
+    // Only try WebSocket on localhost
+    const isLocalhost =
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1";
+
+    if (!isLocalhost) {
+      // Use mock data for GitHub Pages
+      const mockFlights = getMockFlights();
+      const deps = mockFlights
+        .slice(0, Math.ceil(mockFlights.length / 2))
+        .map((f) => convertToFlight(f, "departure"))
+        .sort((a, b) => a.time.localeCompare(b.time));
+
+      const arrs = mockFlights
+        .slice(Math.ceil(mockFlights.length / 2))
+        .map((f) => convertToFlight(f, "arrival"))
+        .sort((a, b) => a.time.localeCompare(b.time));
+
+      setDepartureFlights(deps);
+      setArrivalFlights(arrs);
+      setIsConnected(true);
+      return;
+    }
+
     const wsUrl = `ws://${window.location.hostname}:8080`;
     const ws = new WebSocket(wsUrl);
 
